@@ -1,0 +1,27 @@
+# Dati fiscali reali — non pubblicare mai
+*.xls
+*.xlsx
+*.csv
+*.xml
+*.xml.p7m
+*.p7m
+*.zip
+*.pdf
+
+# Claude Code local state
+.claude/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Cartelle locali / build
+node_modules/
+dist/
+build/
+.cache/
