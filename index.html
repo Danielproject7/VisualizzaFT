@@ -687,35 +687,38 @@ const TIPO_DOC_LABELS = {
 };
 const tipoDocLabel = (c) => TIPO_DOC_LABELS[c] || c || '—';
 
-/* Natura IVA — descrizione di base del codice (Provvedimento Ag. Entrate 89757/2018,
-   aggiornata 2021). Il codice da solo è ambiguo: N3.4 può significare art.8bis, art.9 c.1,
-   art.72, art.71, ecc. Per disambiguare serve il <RiferimentoNormativo> (a livello riepilogo)
-   o il <RiferimentoAmministrazione> (a livello riga). */
+/* Natura IVA — Provvedimento Ag. Entrate 89757/2018 aggiornato 2021 (specifiche tecniche
+   FatturaPA v1.7.1). Tabella allineata con la nomenclatura ufficiale (cfr. TeamSystem
+   Magazine: https://www.teamsystem.com/magazine/fatturazione-e-normativa/nuovi-codici-natura/).
+   I codici N2, N3 e N6 senza sotto-codice non sono più ammessi dal 1° gennaio 2021.
+   Il codice da solo è spesso ambiguo (es. N3.4 può riferirsi ad art. 8-bis, 9 c.1, 72, 71...):
+   il riferimento normativo puntuale arriva da <RiferimentoNormativo> (riepilogo) o da
+   <RiferimentoAmministrazione> (riga). */
 const NATURA_LABELS = {
-  'N1':   'Escluse ex art. 15',
-  'N2':   'Non soggette (obsoleto dal 2021)',
-  'N2.1': 'Non soggette ad IVA — artt. 7 a 7-septies DPR 633/72',
-  'N2.2': 'Non soggette — altri casi',
-  'N3':   'Non imponibili (obsoleto dal 2021)',
-  'N3.1': 'Non imponibili — esportazioni',
-  'N3.2': 'Non imponibili — cessioni intracomunitarie',
-  'N3.3': 'Non imponibili — cessioni verso San Marino',
-  'N3.4': 'Non imponibili — operazioni assimilate alle cessioni all\'esportazione',
-  'N3.5': 'Non imponibili — a seguito di dichiarazioni d\'intento',
-  'N3.6': 'Non imponibili — altre operazioni che non concorrono al plafond',
-  'N4':   'Esenti (art. 10 DPR 633/72)',
-  'N5':   'Regime del margine / IVA non esposta in fattura',
-  'N6':   'Inversione contabile (obsoleto dal 2021)',
-  'N6.1': 'Inversione contabile — rottami e materiali di recupero',
-  'N6.2': 'Inversione contabile — cessione oro e argento puro',
-  'N6.3': 'Inversione contabile — subappalto edile',
-  'N6.4': 'Inversione contabile — cessione fabbricati',
-  'N6.5': 'Inversione contabile — telefoni cellulari',
-  'N6.6': 'Inversione contabile — prodotti elettronici',
-  'N6.7': 'Inversione contabile — comparto edile e settori connessi',
-  'N6.8': 'Inversione contabile — operazioni settore energetico',
+  'N1':   'Operazioni escluse da IVA ex art. 15 DPR 633/72',
+  'N2':   'Operazioni non soggette ad IVA (codice generico — obsoleto dal 01/01/2021)',
+  'N2.1': 'Operazioni non soggette ad IVA per carenza del requisito territoriale (artt. da 7 a 7-septies DPR 633/72)',
+  'N2.2': 'Operazioni non soggette — altri casi (carenza del presupposto oggettivo o soggettivo)',
+  'N3':   'Operazioni non imponibili (codice generico — obsoleto dal 01/01/2021)',
+  'N3.1': 'Operazioni non imponibili — esportazioni verso Paesi extra-UE',
+  'N3.2': 'Operazioni non imponibili — cessioni intracomunitarie',
+  'N3.3': 'Operazioni non imponibili — cessioni verso San Marino',
+  'N3.4': 'Operazioni non imponibili — operazioni assimilate alle cessioni all\'esportazione',
+  'N3.5': 'Operazioni non imponibili — a seguito di dichiarazioni d\'intento',
+  'N3.6': 'Operazioni non imponibili — altre operazioni che non concorrono alla formazione del plafond',
+  'N4':   'Operazioni esenti da IVA (art. 10 DPR 633/72)',
+  'N5':   'Regime del margine / IVA non esposta in fattura (es. beni usati, agenzie di viaggi)',
+  'N6':   'Inversione contabile / reverse charge (codice generico — obsoleto dal 01/01/2021)',
+  'N6.1': 'Inversione contabile — cessione di rottami e altri materiali di recupero',
+  'N6.2': 'Inversione contabile — cessione di oro e argento puro',
+  'N6.3': 'Inversione contabile — subappalto nel settore edile',
+  'N6.4': 'Inversione contabile — cessione di fabbricati',
+  'N6.5': 'Inversione contabile — cessione di telefoni cellulari',
+  'N6.6': 'Inversione contabile — cessione di prodotti elettronici',
+  'N6.7': 'Inversione contabile — prestazioni del comparto edile e settori connessi',
+  'N6.8': 'Inversione contabile — operazioni del settore energetico',
   'N6.9': 'Inversione contabile — altri casi',
-  'N7':   'IVA assolta in altro Stato UE (vendite a distanza, telecomunicazioni)',
+  'N7':   'IVA assolta in altro Stato UE (vendite a distanza, telecomunicazioni, servizi elettronici — artt. 7-sexies, 7-septies, 74-sexies DPR 633/72)',
 };
 const naturaLabel = (n) => {
   if (!n) return '';
@@ -1244,6 +1247,63 @@ const App = () => {
     });
   }, [invoices, adeRows, adeIndex]);
   const adeMatchedCount = useMemo(() => decoratedInvoices.filter(i => i.adeMatched).length, [decoratedInvoices]);
+
+  // ---- Persistence to IndexedDB ---------------------------------------------
+  // `hydrated` becomes true once we've finished reading from IDB. Until then we
+  // skip writes, otherwise the empty initial state would overwrite stored data.
+  const [hydrated, setHydrated] = useState(false);
+  const [hydratingMessage, setHydratingMessage] = useState('Apertura archivio locale…');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [savedInvoices, savedAde, savedAdeName, savedRegister] = await Promise.all([
+          idbGet('invoices'),
+          idbGet('adeRows'),
+          idbGet('adeFileName'),
+          idbGet('vatRegister'),
+        ]);
+        if (cancelled) return;
+        if (Array.isArray(savedInvoices) && savedInvoices.length) setInvoices(savedInvoices);
+        if (Array.isArray(savedAde) && savedAde.length) setAdeRows(savedAde);
+        if (typeof savedAdeName === 'string' && savedAdeName) setAdeFileName(savedAdeName);
+        if (savedRegister && typeof savedRegister === 'object') {
+          // Merge with default codeMap so newly added codes still appear after upgrades
+          setVatRegister(prev => ({ ...prev, ...savedRegister, codeMap: { ...DEFAULT_VAT_CODE_MAP, ...(savedRegister.codeMap || {}) } }));
+        }
+      } catch (e) {
+        console.warn('Hydration failed:', e);
+      } finally {
+        if (!cancelled) setHydrated(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Debounced writes — coalesce rapid state changes into one IDB write per ~400ms.
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => idbSet('invoices', invoices), 400);
+    return () => clearTimeout(t);
+  }, [invoices, hydrated]);
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => idbSet('adeRows', adeRows), 400);
+    return () => clearTimeout(t);
+  }, [adeRows, hydrated]);
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => idbSet('adeFileName', adeFileName || ''), 400);
+    return () => clearTimeout(t);
+  }, [adeFileName, hydrated]);
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => idbSet('vatRegister', vatRegister), 400);
+    return () => clearTimeout(t);
+  }, [vatRegister, hydrated]);
+  // ----------------------------------------------------------------------------
+
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const v = parseInt(localStorage.getItem('vx_sidebarWidth') || '');
     return Number.isFinite(v) && v >= 56 ? Math.min(v, 480) : 288;
@@ -1373,6 +1433,8 @@ const App = () => {
     setInvoices([]); setReconResults([]); setErrorReport([]);
     setVatRegister({ files:[], rows: [], mapping: null, fileName: null, summaryRows: [], codeMap: { ...DEFAULT_VAT_CODE_MAP } });
     setAdeRows([]); setAdeFileName(null);
+    // Wipe IDB immediately too, in case the user reloads before the debounced writes fire
+    idbClear();
   };
   const clearInvoices = () => {
     if (!confirm(`Eliminare le ${invoices.length} fatture caricate? (registro e mapping vengono mantenuti)`)) return;
@@ -1469,7 +1531,7 @@ const App = () => {
           )}
           {!sidebarCollapsed && (
             <div className="mt-3 text-[11px] leading-relaxed sidebar-text" style={{ color:'var(--ink-3)' }}>
-              Tutti i dati restano nel browser. Nessun upload verso server.
+              I dati vengono salvati nel browser (IndexedDB) e ricaricati alla prossima apertura. Nessun upload verso server.
             </div>
           )}
         </div>
@@ -1976,6 +2038,65 @@ const ANALITICO_FONTS = [
 const loadJSON = (key, fallback) => {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
+};
+
+/* IndexedDB persistence layer for the heavy session data
+   (invoices, AdE list, VAT register). Falls back to no-op if unavailable. */
+const IDB_NAME = 'visualizzaft_v1';
+const IDB_STORE = 'kv';
+const idbOpen = () => new Promise((resolve, reject) => {
+  if (typeof indexedDB === 'undefined') { reject(new Error('IndexedDB non disponibile')); return; }
+  const req = indexedDB.open(IDB_NAME, 1);
+  req.onupgradeneeded = () => {
+    const db = req.result;
+    if (!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+  };
+  req.onsuccess = () => resolve(req.result);
+  req.onerror = () => reject(req.error);
+});
+const idbGet = async (key) => {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const r = tx.objectStore(IDB_STORE).get(key);
+      r.onsuccess = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+    });
+  } catch { return undefined; }
+};
+const idbSet = async (key, value) => {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { console.warn('idbSet failed for', key, e); }
+};
+const idbDel = async (key) => {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {}
+};
+const idbClear = async () => {
+  try {
+    const db = await idbOpen();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {}
 };
 
 const AnaliticoSection = ({ allLines, invoices, adeLoaded=false, setPdfTarget }) => {
