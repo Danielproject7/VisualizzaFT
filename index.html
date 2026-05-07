@@ -1082,23 +1082,119 @@ const isMetadataFile = (name) => {
   return /(?:^|[_\-\/\\])metadat[oi](?:[_\-\.]|$)|metadat[oi]\.xml$/i.test(n);
 };
 
+/* Locate the FatturaPA XML inside a decoded text view. Returns [startIdx, endIdx] or null. */
+const _findFatturaXmlRange = (decoded) => {
+  const rootRe = /<(?:[A-Za-z][\w.-]*:)?FatturaElettronica(?:Semplificata)?[\s>]/;
+  const rootMatch = decoded.match(rootRe);
+  if (!rootMatch) return null;
+  let startIdx = rootMatch.index;
+  const xmlIdx = decoded.lastIndexOf('<?xml', startIdx);
+  if (xmlIdx >= 0 && (startIdx - xmlIdx) < 200) startIdx = xmlIdx;
+  const openTagEnd = decoded.indexOf('>', rootMatch.index);
+  const searchFrom = openTagEnd > 0 ? openTagEnd : startIdx;
+  const endRe = /<\/(?:[A-Za-z][\w.-]*:)?FatturaElettronica(?:Semplificata)?\s*>/g;
+  endRe.lastIndex = searchFrom;
+  const endMatch = endRe.exec(decoded);
+  if (!endMatch) return null;
+  return [startIdx, endMatch.index + endMatch[0].length];
+};
+
+/* Strip XML-illegal control chars (XML 1.0 forbids them outside \x09/\x0A/\x0D). */
+const _xmlSanitize = (s) => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+/* Quick sniff: does this string look like a parseable XML (no obvious garbage in tags)?
+   Returns true if it lacks suspicious non-ASCII bytes inside tag-like patterns. */
+const _looksParseable = (xml) => {
+  // A tag containing latin1 high bytes (0x80-0xFF) typically means leftover ASN.1 padding.
+  return !/<[\w.:\-\/]*[\x80-\xFF][\w.:\-\/]*>/.test(xml);
+};
+
+/* Walk a DER ASN.1 stream, collect contents of all primitive OCTET STRINGs and
+   concatenate them in source order. For chunked (constructed) OCTET STRINGs the
+   children re-assemble into the original encoded content with NO ASN.1 length
+   headers in between — the key reason this fallback exists. */
+const _collectAsn1OctetStrings = (view) => {
+  const out = []; // {start, end} byte ranges
+  const readLen = (p) => {
+    if (p >= view.length) return null;
+    const lb = view[p];
+    if (lb < 0x80) return { len: lb, lenBytes: 1 };
+    if (lb === 0x80) return { len: -1, lenBytes: 1 }; // indefinite — punt
+    const n = lb & 0x7f;
+    if (n > 4 || p + n >= view.length) return null;
+    let v = 0;
+    for (let i = 0; i < n; i++) v = (v << 8) | view[p + 1 + i];
+    return { len: v, lenBytes: 1 + n };
+  };
+  const walk = (start, end, depth) => {
+    if (depth > 30) return;
+    let p = start;
+    while (p < end) {
+      const tag = view[p];
+      if (tag === undefined) return;
+      // End-of-content marker (00 00) used by indefinite-length BER encodings — stop.
+      if (tag === 0x00 && view[p + 1] === 0x00) return;
+      const li = readLen(p + 1);
+      if (!li) return;
+      if (li.len < 0) return; // indefinite length: bail this branch
+      const cs = p + 1 + li.lenBytes;
+      const ce = cs + li.len;
+      if (ce > end) return;
+      if (tag === 0x04) {
+        out.push({ start: cs, end: ce });
+      }
+      // Constructed (high-bit-of-low-tag-bits 0x20 set) OR context-specific [n] EXPLICIT — recurse.
+      if ((tag & 0x20) !== 0) walk(cs, ce, depth + 1);
+      p = ce;
+    }
+  };
+  walk(0, view.length, 0);
+  return out;
+};
+
+const _extractFromAsn1 = (view) => {
+  const ranges = _collectAsn1OctetStrings(view);
+  if (!ranges.length) return null;
+  // Concatenate all OCTET STRING contents in source order. The eContent (which holds
+  // the XML, possibly across many chunks) appears before the certificate / signature
+  // OCTET STRINGs that come later in the SignedData structure. The XML markers are
+  // therefore guaranteed to be in the prefix; the trailing junk is harmless because
+  // we slice on those markers.
+  let total = 0;
+  for (const r of ranges) total += (r.end - r.start);
+  const buf = new Uint8Array(total);
+  let off = 0;
+  for (const r of ranges) {
+    buf.set(view.subarray(r.start, r.end), off);
+    off += (r.end - r.start);
+  }
+  const text = new TextDecoder('latin1').decode(buf);
+  const range = _findFatturaXmlRange(text);
+  if (!range) return null;
+  return _xmlSanitize(new TextDecoder('utf-8', { fatal: false }).decode(buf.slice(range[0], range[1])));
+};
+
 /* Extract the encapsulated XML invoice from a CAdES-BES PKCS#7 envelope (.p7m).
-   Handles both PEM (Base64 with -----BEGIN/END----- markers) and DER (binary) encodings,
-   plus UTF-16 LE payloads and constructed OCTET STRING chunks (whose length headers
-   are stripped from the extracted range). */
+   Strategy (in order):
+     1. ASN.1 walker — correct path for every well-formed CMS file: handles both
+        primitive OCTET STRING (single chunk) AND constructed OCTET STRING (XML
+        split across chunks). Re-assembles chunks contiguously so no ASN.1 length
+        bytes pollute the result.
+     2. Byte-scan in latin1 — fallback for malformed files, plain XML mistakenly
+        named .p7m, or formats the walker can't traverse (BER indefinite length).
+     3. UTF-16 LE/BE byte-scan — rare tools that produce UTF-16 payloads. */
 const extractXmlFromP7mBuffer = (arrayBuffer) => {
   let view = new Uint8Array(arrayBuffer);
 
-  // Skip leading whitespace and check for PEM header
+  // PEM detection
   let p = 0;
   while (p < view.length && (view[p] === 0x20 || view[p] === 0x09 || view[p] === 0x0A || view[p] === 0x0D)) p++;
-  if (view[p] === 0x2D /* '-' */) {
+  if (view[p] === 0x2D) {
     const head = new TextDecoder('latin1').decode(view.slice(p, Math.min(p + 30, view.length)));
     if (head.startsWith('-----BEGIN')) {
       const text = new TextDecoder('latin1').decode(view);
       const m = text.match(/-----BEGIN[^-\n]*-----([\s\S]+?)-----END/);
       if (!m) throw new Error('Envelope PEM senza body Base64');
-      // Strip whitespace AND any other non-base64 characters that might sneak in
       const b64 = m[1].replace(/[^A-Za-z0-9+/=]/g, '');
       try {
         const decoded = atob(b64);
@@ -1111,56 +1207,33 @@ const extractXmlFromP7mBuffer = (arrayBuffer) => {
     }
   }
 
-  // Locate the FatturaPA XML inside the binary using the given decoded view.
-  // Returns [startIdx, endIdx] in the decoded string, or null if not found.
-  const findRange = (decoded) => {
-    // Prefer the root tag — more reliable than <?xml (which could appear as random bytes)
-    const rootRe = /<(?:[A-Za-z][\w.-]*:)?FatturaElettronica(?:Semplificata)?[\s>]/;
-    const rootMatch = decoded.match(rootRe);
-    if (!rootMatch) return null;
-    let startIdx = rootMatch.index;
-    // If a <?xml prolog appears just before the root tag, include it
-    const xmlIdx = decoded.lastIndexOf('<?xml', startIdx);
-    if (xmlIdx >= 0 && (startIdx - xmlIdx) < 200) startIdx = xmlIdx;
-    // Search closing tag from after the opening tag's '>' to skip the open tag itself
-    const openTagEnd = decoded.indexOf('>', rootMatch.index);
-    const searchFrom = openTagEnd > 0 ? openTagEnd : startIdx;
-    const endRe = /<\/(?:[A-Za-z][\w.-]*:)?FatturaElettronica(?:Semplificata)?\s*>/g;
-    endRe.lastIndex = searchFrom;
-    const endMatch = endRe.exec(decoded);
-    if (!endMatch) return null;
-    return [startIdx, endMatch.index + endMatch[0].length];
-  };
+  // 1) ASN.1 walker — preferred path for any structured CMS envelope
+  const asn1 = _extractFromAsn1(view);
+  if (asn1) return asn1;
 
-  // Strip stray bytes that do not belong inside well-formed XML — happens when the
-  // XML is encoded as a CONSTRUCTED OCTET STRING (split into chunks). The ASN.1 chunk
-  // headers (04 81 LL or 04 82 LL LL ...) end up between elements as control bytes,
-  // breaking the DOMParser. XML 1.0 forbids control chars except \x09, \x0A, \x0D.
-  const sanitize = (s) => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-
-  // 1) Try latin1 (UTF-8 byte-compatible for ASCII tokens)
+  // 2) Byte-scan latin1 — catches plain XML files mislabelled as .p7m or
+  //    structures the walker can't traverse (e.g. BER indefinite length)
   const ascii = new TextDecoder('latin1').decode(view);
-  const range = findRange(ascii);
+  const range = _findFatturaXmlRange(ascii);
   if (range) {
-    const xml = new TextDecoder('utf-8', { fatal: false }).decode(view.slice(range[0], range[1]));
-    return sanitize(xml);
+    return _xmlSanitize(new TextDecoder('utf-8', { fatal: false }).decode(view.slice(range[0], range[1])));
   }
 
-  // 2) Try UTF-16 LE — some signing tools produce UTF-16 encoded payloads
+  // 3) UTF-16 LE / BE byte-scan
   if (view.length >= 4) {
     try {
       const utf16 = new TextDecoder('utf-16le', { fatal: false }).decode(view);
-      const r2 = findRange(utf16);
-      if (r2) return sanitize(utf16.substring(r2[0], r2[1]));
+      const r2 = _findFatturaXmlRange(utf16);
+      if (r2) return _xmlSanitize(utf16.substring(r2[0], r2[1]));
     } catch {}
     try {
       const utf16be = new TextDecoder('utf-16be', { fatal: false }).decode(view);
-      const r3 = findRange(utf16be);
-      if (r3) return sanitize(utf16be.substring(r3[0], r3[1]));
+      const r3 = _findFatturaXmlRange(utf16be);
+      if (r3) return _xmlSanitize(utf16be.substring(r3[0], r3[1]));
     } catch {}
   }
 
-  throw new Error('Nessun XML FatturaPA trovato nell\'envelope p7m (firma scollegata o formato non supportato)');
+  throw new Error('Nessun XML FatturaPA trovato nell\'envelope p7m (firma scollegata, BER indefinito o formato non supportato)');
 };
 
 const processFiles = async (fileList, onProgress) => {
