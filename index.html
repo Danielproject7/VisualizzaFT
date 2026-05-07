@@ -1083,9 +1083,9 @@ const isMetadataFile = (name) => {
 };
 
 /* Extract the encapsulated XML invoice from a CAdES-BES PKCS#7 envelope (.p7m).
-   Handles both PEM (Base64 with -----BEGIN/END----- markers) and DER (binary) encodings.
-   Strategy: locate the literal XML root tag in the bytes (no full ASN.1 parsing needed,
-   since FatturaPA p7m always wraps the entire XML as one OCTET STRING in eContent). */
+   Handles both PEM (Base64 with -----BEGIN/END----- markers) and DER (binary) encodings,
+   plus UTF-16 LE payloads and constructed OCTET STRING chunks (whose length headers
+   are stripped from the extracted range). */
 const extractXmlFromP7mBuffer = (arrayBuffer) => {
   let view = new Uint8Array(arrayBuffer);
 
@@ -1097,37 +1097,70 @@ const extractXmlFromP7mBuffer = (arrayBuffer) => {
     if (head.startsWith('-----BEGIN')) {
       const text = new TextDecoder('latin1').decode(view);
       const m = text.match(/-----BEGIN[^-\n]*-----([\s\S]+?)-----END/);
-      if (!m) throw new Error('PEM senza body Base64');
-      const b64 = m[1].replace(/\s+/g, '');
+      if (!m) throw new Error('Envelope PEM senza body Base64');
+      // Strip whitespace AND any other non-base64 characters that might sneak in
+      const b64 = m[1].replace(/[^A-Za-z0-9+/=]/g, '');
       try {
         const decoded = atob(b64);
         const bytes = new Uint8Array(decoded.length);
         for (let k = 0; k < decoded.length; k++) bytes[k] = decoded.charCodeAt(k);
         view = bytes;
       } catch (e) {
-        throw new Error('PEM Base64 non valido');
+        throw new Error('Envelope PEM con Base64 corrotto');
       }
     }
   }
 
-  // Byte-level scan using latin1 (preserves byte offsets for ASCII tokens)
+  // Locate the FatturaPA XML inside the binary using the given decoded view.
+  // Returns [startIdx, endIdx] in the decoded string, or null if not found.
+  const findRange = (decoded) => {
+    // Prefer the root tag — more reliable than <?xml (which could appear as random bytes)
+    const rootRe = /<(?:[A-Za-z][\w.-]*:)?FatturaElettronica(?:Semplificata)?[\s>]/;
+    const rootMatch = decoded.match(rootRe);
+    if (!rootMatch) return null;
+    let startIdx = rootMatch.index;
+    // If a <?xml prolog appears just before the root tag, include it
+    const xmlIdx = decoded.lastIndexOf('<?xml', startIdx);
+    if (xmlIdx >= 0 && (startIdx - xmlIdx) < 200) startIdx = xmlIdx;
+    // Search closing tag from after the opening tag's '>' to skip the open tag itself
+    const openTagEnd = decoded.indexOf('>', rootMatch.index);
+    const searchFrom = openTagEnd > 0 ? openTagEnd : startIdx;
+    const endRe = /<\/(?:[A-Za-z][\w.-]*:)?FatturaElettronica(?:Semplificata)?\s*>/g;
+    endRe.lastIndex = searchFrom;
+    const endMatch = endRe.exec(decoded);
+    if (!endMatch) return null;
+    return [startIdx, endMatch.index + endMatch[0].length];
+  };
+
+  // Strip stray bytes that do not belong inside well-formed XML — happens when the
+  // XML is encoded as a CONSTRUCTED OCTET STRING (split into chunks). The ASN.1 chunk
+  // headers (04 81 LL or 04 82 LL LL ...) end up between elements as control bytes,
+  // breaking the DOMParser. XML 1.0 forbids control chars except \x09, \x0A, \x0D.
+  const sanitize = (s) => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+  // 1) Try latin1 (UTF-8 byte-compatible for ASCII tokens)
   const ascii = new TextDecoder('latin1').decode(view);
-  let startIdx = ascii.indexOf('<?xml');
-  if (startIdx < 0) {
-    const m = ascii.match(/<(?:[A-Za-z][\w-]*:)?FatturaElettronica(?:Header|Semplificata)?[\s>]/);
-    if (m) startIdx = m.index;
+  const range = findRange(ascii);
+  if (range) {
+    const xml = new TextDecoder('utf-8', { fatal: false }).decode(view.slice(range[0], range[1]));
+    return sanitize(xml);
   }
-  if (startIdx < 0) throw new Error('Contenuto XML non trovato nell\'envelope p7m');
 
-  // Find the closing tag of the root element
-  const endRe = /<\/(?:[A-Za-z][\w-]*:)?FatturaElettronica(?:Semplificata)?\s*>/g;
-  endRe.lastIndex = startIdx;
-  const endMatch = endRe.exec(ascii);
-  if (!endMatch) throw new Error('Tag di chiusura FatturaElettronica non trovato nel p7m');
-  const endIdx = endMatch.index + endMatch[0].length;
+  // 2) Try UTF-16 LE — some signing tools produce UTF-16 encoded payloads
+  if (view.length >= 4) {
+    try {
+      const utf16 = new TextDecoder('utf-16le', { fatal: false }).decode(view);
+      const r2 = findRange(utf16);
+      if (r2) return sanitize(utf16.substring(r2[0], r2[1]));
+    } catch {}
+    try {
+      const utf16be = new TextDecoder('utf-16be', { fatal: false }).decode(view);
+      const r3 = findRange(utf16be);
+      if (r3) return sanitize(utf16be.substring(r3[0], r3[1]));
+    } catch {}
+  }
 
-  // Decode the extracted byte range as UTF-8 (the actual XML encoding declared by FatturaPA)
-  return new TextDecoder('utf-8').decode(view.slice(startIdx, endIdx));
+  throw new Error('Nessun XML FatturaPA trovato nell\'envelope p7m (firma scollegata o formato non supportato)');
 };
 
 const processFiles = async (fileList, onProgress) => {
