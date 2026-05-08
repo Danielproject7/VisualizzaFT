@@ -1671,12 +1671,12 @@ const App = () => {
     idbClear();
   };
   const clearInvoices = () => {
-    if (!confirm(`Eliminare le ${invoices.length} fatture caricate? (registro e mapping vengono mantenuti)`)) return;
+    if (!confirm(`Eliminare le ${fmtNum(invoices.length, 0)} fatture caricate? (registro e mapping vengono mantenuti)`)) return;
     setInvoices([]); setReconResults([]); setErrorReport([]);
   };
   const clearRegister = () => {
     const totalRows = vatRegister.rows.length + vatRegister.summaryRows.length;
-    if (!confirm(`Eliminare il registro IVA importato (${totalRows} righe da ${vatRegister.files.length} file)? La mappa codici IVA viene mantenuta.`)) return;
+    if (!confirm(`Eliminare il registro IVA importato (${fmtNum(totalRows, 0)} righe da ${fmtNum(vatRegister.files.length, 0)} file)? La mappa codici IVA viene mantenuta.`)) return;
     setVatRegister(p => ({ files:[], rows: [], mapping: null, fileName: null, summaryRows: [], codeMap: p.codeMap }));
     setReconResults([]); setErrorReport([]);
   };
@@ -1720,7 +1720,7 @@ const App = () => {
                    className={`nav-item ${section===s.id ? 'active':''}`}>
                 <Icon name={s.icon} size={15} />
                 <span>{s.label}</span>
-                {count !== null && <span className="nav-count">{count}</span>}
+                {count !== null && <span className="nav-count">{fmtNum(count, 0)}</span>}
               </div>
             );
           })}
@@ -1741,19 +1741,19 @@ const App = () => {
                       onClick={()=>{ clearInvoices(); setShowResetMenu(false); }}
                       disabled={!invoices.length}>
                 <span>Solo fatture XML</span>
-                <span className="font-mono opacity-60">{invoices.length}</span>
+                <span className="font-mono opacity-60">{fmtNum(invoices.length, 0)}</span>
               </button>
               <button className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-black/5 flex items-center justify-between"
                       onClick={()=>{ clearRegister(); setShowResetMenu(false); }}
                       disabled={!vatRegister.rows.length && !vatRegister.summaryRows.length}>
                 <span>Solo registro IVA</span>
-                <span className="font-mono opacity-60">{vatRegister.rows.length + vatRegister.summaryRows.length}</span>
+                <span className="font-mono opacity-60">{fmtNum(vatRegister.rows.length + vatRegister.summaryRows.length, 0)}</span>
               </button>
               <button className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-black/5 flex items-center justify-between"
                       onClick={()=>{ clearRecon(); setShowResetMenu(false); }}
                       disabled={!reconResults.length && !errorReport.length}>
                 <span>Solo riconciliazioni + errori</span>
-                <span className="font-mono opacity-60">{reconResults.length}</span>
+                <span className="font-mono opacity-60">{fmtNum(reconResults.length, 0)}</span>
               </button>
               <div className="border-t my-1" style={{borderColor:'var(--line)'}}></div>
               <button className="w-full text-left text-xs px-2 py-1.5 rounded flex items-center justify-between"
@@ -1878,16 +1878,16 @@ const Dashboard = ({ invoices, allLines, vatRegister, reconResults, errorReport,
       {invoices.length > 0 && (
         <Fragment>
           <div className="grid grid-cols-4 gap-4 mb-8">
-            <KPI label="Fatture importate" value={invoices.length} sub={`${allLines.length} righe analitiche`} />
+            <KPI label="Fatture importate" value={fmtNum(invoices.length, 0)} sub={`${fmtNum(allLines.length, 0)} righe analitiche`} />
             <KPI label="Imponibile totale" value={fmtMoney(stats.totImponibile)} sub="Somma riepiloghi IVA" />
             <KPI label="IVA totale" value={fmtMoney(stats.totImposta)} sub="Somma imposte" accent />
             <KPI label="Totale documenti" value={fmtMoney(stats.totDocumenti)} sub="Importo totale fatture" />
           </div>
 
           <div className="grid grid-cols-3 gap-4 mb-8">
-            <KPI label="Errori controllo" value={stats.errCount} sub="Anomalie certe" cls="err" />
-            <KPI label="Warning" value={stats.warnCount} sub="Da verificare" cls="warn" />
-            <KPI label="Da chiarire" value={stats.todoCount} sub="Casi in revisione manuale" cls="ok" />
+            <KPI label="Errori controllo" value={fmtNum(stats.errCount, 0)} sub="Anomalie certe" cls="err" />
+            <KPI label="Warning" value={fmtNum(stats.warnCount, 0)} sub="Da verificare" cls="warn" />
+            <KPI label="Da chiarire" value={fmtNum(stats.todoCount, 0)} sub="Casi in revisione manuale" cls="ok" />
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-8">
@@ -1905,7 +1905,7 @@ const Dashboard = ({ invoices, allLines, vatRegister, reconResults, errorReport,
                   {stats.topSuppliers.map((s,i) => (
                     <tr key={i} className="hover-row">
                       <td className="truncate max-w-[280px]">{s.name}</td>
-                      <td className="num">{s.count}</td>
+                      <td className="num">{fmtNum(s.count, 0)}</td>
                       <td className="num">{fmtMoney(s.imponibile)}</td>
                       <td className="num font-semibold">{fmtMoney(s.total)}</td>
                     </tr>
@@ -1947,8 +1947,8 @@ const Dashboard = ({ invoices, allLines, vatRegister, reconResults, errorReport,
                 <p className="text-sm" style={{ color:'var(--ink-3)' }}>
                   {(vatRegister.rows.length + vatRegister.summaryRows.length) > 0 ? (
                     <span>
-                      <span className="font-mono">{vatRegister.files.length}</span> file caricati ·
-                      {' '}<span className="font-mono">{vatRegister.rows.length + vatRegister.summaryRows.length}</span> righe totali
+                      <span className="font-mono">{fmtNum(vatRegister.files.length, 0)}</span> file caricati ·
+                      {' '}<span className="font-mono">{fmtNum(vatRegister.rows.length + vatRegister.summaryRows.length, 0)}</span> righe totali
                       {vatRegister.summaryRows.length > 0 && <span> · <span className="badge b-info">Riassuntivo</span></span>}
                       {vatRegister.rows.length > 0 && <span> · <span className="badge b-mute">Per documento</span></span>}
                     </span>
@@ -2035,7 +2035,7 @@ const UploadSection = ({ invoices, addInvoices, removeInvoice, setPdfTarget,
       ts: new Date(),
       fileName: r.fileName,
       status: r.status,
-      message: r.message || (r.documents ? `${r.documents.length} documento/i estratti` : ''),
+      message: r.message || (r.documents ? `${fmtNum(r.documents.length, 0)} documento/i estratti` : ''),
       count: r.documents?.length || 0,
     }));
     setLog(prev => [...newLogEntries, ...prev]);
@@ -2079,7 +2079,7 @@ const UploadSection = ({ invoices, addInvoices, removeInvoice, setPdfTarget,
         <div className="card p-4 mb-6">
           <div className="flex items-center gap-3 mb-2">
             <div className="pulse w-2 h-2 rounded-full" style={{ background:'var(--accent)' }} />
-            <div className="text-sm font-medium">Elaborazione {progress.current} di {progress.total}</div>
+            <div className="text-sm font-medium">Elaborazione {fmtNum(progress.current, 0)} di {fmtNum(progress.total, 0)}</div>
             <div className="text-xs ml-auto truncate max-w-[400px]" style={{ color:'var(--ink-3)' }}>{progress.file}</div>
           </div>
           <div className="h-1 rounded-full" style={{ background:'var(--bg-deep)' }}>
@@ -2153,7 +2153,7 @@ const UploadSection = ({ invoices, addInvoices, removeInvoice, setPdfTarget,
                           border: '1px solid ' + (active ? 'var(--ink)' : 'var(--line)'),
                           fontSize: 12,
                         }}>
-                  {f.label} <span className="num" style={{opacity:0.7, marginLeft:4}}>{logCounts[f.id]}</span>
+                  {f.label} <span className="num" style={{opacity:0.7, marginLeft:4}}>{fmtNum(logCounts[f.id], 0)}</span>
                 </button>
               );
             })}
@@ -2172,7 +2172,7 @@ const UploadSection = ({ invoices, addInvoices, removeInvoice, setPdfTarget,
             </div>
             {(logStatusFilter !== 'all' || logSearch) && (
               <span className="text-xs" style={{color:'var(--ink-3)'}}>
-                {filteredLog.length} di {log.length}
+                {fmtNum(filteredLog.length, 0)} di {fmtNum(log.length, 0)}
               </span>
             )}
           </div>
@@ -2207,7 +2207,7 @@ const UploadSection = ({ invoices, addInvoices, removeInvoice, setPdfTarget,
       {invoices.length > 0 && (
         <div className="card">
           <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor:'var(--line)' }}>
-            <h3 className="font-serif text-lg">Documenti importati ({invoices.length})</h3>
+            <h3 className="font-serif text-lg">Documenti importati ({fmtNum(invoices.length, 0)})</h3>
           </div>
           <div className="max-h-[500px] overflow-auto">
             <table className="data-table">
@@ -2631,7 +2631,7 @@ const AnaliticoSection = ({ allLines, invoices, adeLoaded=false, setPdfTarget })
         <div className="flex justify-between items-center mt-4 pt-3 border-t" style={{ borderColor:'var(--line-2)' }}>
           <div className="flex gap-2 flex-wrap">
             <button className="btn btn-secondary" onClick={()=>setShowColPicker(true)}>
-              <Icon name="grid" size={13}/> Colonne ({visibleCols.length}/{ANALITICO_COLUMNS.length})
+              <Icon name="grid" size={13}/> Colonne ({fmtNum(visibleCols.length, 0)}/{fmtNum(ANALITICO_COLUMNS.length, 0)})
             </button>
             <button className="btn btn-secondary" onClick={()=>setShowDisplay(true)}>
               <Icon name="settings" size={13}/> Visualizzazione
@@ -2662,7 +2662,7 @@ const AnaliticoSection = ({ allLines, invoices, adeLoaded=false, setPdfTarget })
             </div>
             <div className="p-5">
               <div className="flex gap-2 mb-4 flex-wrap">
-                <button className="btn btn-secondary text-xs" onClick={()=>setVisibleCols(ANALITICO_COLUMNS.map(c=>c.id))}>Tutte ({ANALITICO_COLUMNS.length})</button>
+                <button className="btn btn-secondary text-xs" onClick={()=>setVisibleCols(ANALITICO_COLUMNS.map(c=>c.id))}>Tutte ({fmtNum(ANALITICO_COLUMNS.length, 0)})</button>
                 <button className="btn btn-secondary text-xs" onClick={()=>setVisibleCols(ANALITICO_DEFAULT)}>Predefinite</button>
                 <button className="btn btn-secondary text-xs" onClick={()=>setVisibleCols([])}>Nessuna</button>
               </div>
@@ -2760,7 +2760,7 @@ const AnaliticoSection = ({ allLines, invoices, adeLoaded=false, setPdfTarget })
               <div className="border-b pb-3" style={{ borderColor:'var(--line-2)' }}>
                 <div className="small-cap text-xs font-semibold mb-2" style={{color:'var(--ink-2)'}}>Blocca riquadri</div>
                 <p className="text-[11px] mb-2" style={{color:'var(--ink-3)'}}>L'intestazione resta sempre visibile durante lo scorrimento. Scegli quante colonne a sinistra restano fisse durante lo scorrimento orizzontale.</p>
-                <label className="label block mb-1">Colonne fisse a sinistra: <span className="num">{freezeCols}</span></label>
+                <label className="label block mb-1">Colonne fisse a sinistra: <span className="num">{fmtNum(freezeCols, 0)}</span></label>
                 <input type="range" min="0" max="6" step="1" value={freezeCols}
                        onChange={e=>setFreezeCols(parseInt(e.target.value))} className="w-full"/>
                 <div className="flex justify-between text-[10px]" style={{color:'var(--ink-3)'}}>
@@ -2928,7 +2928,7 @@ const AnaliticoSection = ({ allLines, invoices, adeLoaded=false, setPdfTarget })
                 {renderTbody()}
                 {filtered.length > 1000 && (
                   <tr><td colSpan={shownCols.length+1} className="text-center italic" style={{color:'var(--ink-3)'}}>
-                    ... visualizzate prime 1000 righe su {fmtNum(filtered.length, 0)}. Esporta in Excel per il dataset completo.
+                    ... visualizzate prime {fmtNum(1000, 0)} righe su {fmtNum(filtered.length, 0)}. Esporta in Excel per il dataset completo.
                   </td></tr>
                 )}
               </tbody>
@@ -3336,7 +3336,7 @@ const DocumentiSection = ({ invoices, adeLoaded=false, setPdfTarget }) => {
         <div className="card px-3 py-2 mb-2 flex items-center justify-between gap-3 text-xs" style={{flexWrap:'wrap'}}>
           <div className="flex items-center gap-2 flex-wrap" style={{color:'var(--ink-3)'}}>
             {activeFilters > 0 ? (
-              <><span className="badge b-info">{activeFilters} filtri</span>
+              <><span className="badge b-info">{fmtNum(activeFilters, 0)} filtri</span>
                 <span className="font-semibold">Imp. {fmtMoney(totals.imponibile)} · IVA {fmtMoney(totals.imposta)}</span></>
             ) : (<span>Nessun filtro attivo</span>)}
           </div>
@@ -3391,14 +3391,14 @@ const DocumentiSection = ({ invoices, adeLoaded=false, setPdfTarget }) => {
               <div className="col-span-3">
                 <label className="label block mb-1">Fornitore</label>
                 <select className="input" value={filterSupplier} onChange={e=>setFilterSupplier(e.target.value)}>
-                  <option value="">Tutti ({suppliers.length})</option>
+                  <option value="">Tutti ({fmtNum(suppliers.length, 0)})</option>
                   {suppliers.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div className="col-span-3">
                 <label className="label block mb-1">Cliente</label>
                 <select className="input" value={filterCustomer} onChange={e=>setFilterCustomer(e.target.value)}>
-                  <option value="">Tutti ({customers.length})</option>
+                  <option value="">Tutti ({fmtNum(customers.length, 0)})</option>
                   {customers.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -3430,7 +3430,7 @@ const DocumentiSection = ({ invoices, adeLoaded=false, setPdfTarget }) => {
           <div className="col-span-12 flex items-center justify-between gap-3 pt-2 border-t" style={{borderColor:'var(--line)'}}>
             <div className="text-xs" style={{color:'var(--ink-3)'}}>
               {activeFilters > 0 ? (
-                <span><span className="badge b-info">{activeFilters}</span> filtri attivi · <span className="font-semibold">Imponibile {fmtMoney(totals.imponibile)} · IVA {fmtMoney(totals.imposta)}</span></span>
+                <span><span className="badge b-info">{fmtNum(activeFilters, 0)}</span> filtri attivi · <span className="font-semibold">Imponibile {fmtMoney(totals.imponibile)} · IVA {fmtMoney(totals.imposta)}</span></span>
               ) : (
                 <span>Nessun filtro attivo</span>
               )}
@@ -3442,7 +3442,7 @@ const DocumentiSection = ({ invoices, adeLoaded=false, setPdfTarget }) => {
                 </button>
               )}
               <button className="btn btn-ghost" onClick={()=>setShowColPicker(s=>!s)}>
-                <Icon name="grid" size={13}/> Colonne ({visibleCols.length}/{DOCUMENTI_COLUMNS.length})
+                <Icon name="grid" size={13}/> Colonne ({fmtNum(visibleCols.length, 0)}/{fmtNum(DOCUMENTI_COLUMNS.length, 0)})
               </button>
               <button className="btn btn-ghost" onClick={()=>setShowDisplay(true)}>
                 <Icon name="settings" size={13}/> Visualizzazione
@@ -3528,7 +3528,7 @@ const DocumentiSection = ({ invoices, adeLoaded=false, setPdfTarget }) => {
               <div className="border-b pb-3" style={{ borderColor:'var(--line-2)' }}>
                 <div className="small-cap text-xs font-semibold mb-2" style={{color:'var(--ink-2)'}}>Blocca riquadri</div>
                 <p className="text-[11px] mb-2" style={{color:'var(--ink-3)'}}>Colonne a sinistra che restano sempre visibili durante lo scorrimento orizzontale.</p>
-                <label className="label block mb-1">Colonne fisse a sinistra: <span className="num">{freezeCols}</span></label>
+                <label className="label block mb-1">Colonne fisse a sinistra: <span className="num">{fmtNum(freezeCols, 0)}</span></label>
                 <input type="range" min="0" max="6" step="1" value={freezeCols}
                        onChange={e=>setFreezeCols(parseInt(e.target.value))} className="w-full"/>
                 <div className="flex justify-between text-[10px]" style={{color:'var(--ink-3)'}}>
@@ -3773,7 +3773,7 @@ const DocumentDetail = ({ inv, accent='var(--accent)' }) => (
     </div>
 
     <div className="col-span-12 mt-1">
-      <div className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{color: accent}}>Righe documento ({inv.lines.length})</div>
+      <div className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{color: accent}}>Righe documento ({fmtNum(inv.lines.length, 0)})</div>
       <div className="overflow-x-auto" style={{borderColor: accent, borderWidth: 1, borderStyle: 'solid', borderRadius: 3}}>
         <table className="doc-detail-table">
           <colgroup>
@@ -3797,7 +3797,7 @@ const DocumentDetail = ({ inv, accent='var(--accent)' }) => (
           <tbody>
             {inv.lines.map((l,i) => (
               <tr key={i}>
-                <td className="num">{l.numeroLinea}</td>
+                <td className="num">{l.numeroLinea != null ? fmtNum(l.numeroLinea, 0) : '—'}</td>
                 <td>{l.descrizione || '—'}</td>
                 <td className="num">{l.quantita != null ? fmtNum(l.quantita,2) : '—'}</td>
                 <td>{l.unitaMisura || '—'}</td>
@@ -3818,7 +3818,7 @@ const DocumentDetail = ({ inv, accent='var(--accent)' }) => (
     </div>
 
     <div className="col-span-12 mt-1">
-      <div className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{color: accent}}>Riepiloghi IVA ({inv.summaries.length})</div>
+      <div className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{color: accent}}>Riepiloghi IVA ({fmtNum(inv.summaries.length, 0)})</div>
       <div className="overflow-x-auto" style={{borderColor: accent, borderWidth: 1, borderStyle: 'solid', borderRadius: 3}}>
         <table className="doc-detail-table">
           <colgroup>
@@ -4146,7 +4146,7 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
   const removeFile = (fileId) => {
     const f = vatRegister.files.find(x => x.id === fileId);
     if (!f) return;
-    if (!confirm(`Rimuovere il file "${f.fileName}" (${f.rowCount} righe)?`)) return;
+    if (!confirm(`Rimuovere il file "${f.fileName}" (${fmtNum(f.rowCount, 0)} righe)?`)) return;
     setVatRegister(prev => ({
       ...prev,
       files: prev.files.filter(x => x.id !== fileId),
@@ -4252,7 +4252,7 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
         <h1 className="text-4xl font-serif font-medium tracking-tight">Registri IVA</h1>
         <div className="text-sm" style={{color:'var(--ink-3)'}}>
           {vatRegister.files.length > 0 && (
-            <span><span className="font-mono">{vatRegister.files.length}</span> file · <span className="font-mono">{totalRowsAll}</span> righe totali</span>
+            <span><span className="font-mono">{fmtNum(vatRegister.files.length, 0)}</span> file · <span className="font-mono">{fmtNum(totalRowsAll, 0)}</span> righe totali</span>
           )}
         </div>
       </div>
@@ -4290,7 +4290,7 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
           <div className="px-5 py-4 border-b" style={{ borderColor:'var(--line)' }}>
             <h3 className="font-serif text-lg">Mappatura colonne (formato per documento)</h3>
             <p className="text-xs mt-1" style={{ color:'var(--ink-3)' }}>
-              File: <span className="font-mono">{stagedFile.fileName}</span> · {stagedFile.rows.length} righe da importare
+              File: <span className="font-mono">{stagedFile.fileName}</span> · {fmtNum(stagedFile.rows.length, 0)} righe da importare
             </p>
           </div>
           <div className="p-5">
@@ -4319,7 +4319,7 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
               Annulla
             </button>
             <button className="btn btn-primary" onClick={applyDetailedMapping}>
-              <Icon name="check" size={13}/> Importa {stagedFile.rows.length} righe
+              <Icon name="check" size={13}/> Importa {fmtNum(stagedFile.rows.length, 0)} righe
             </button>
           </div>
         </div>
@@ -4332,27 +4332,27 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
             <button className={`px-4 py-2 text-sm border-b-2 ${tab==='files'?'':''}`}
                     style={{borderColor: tab==='files'?'var(--accent)':'transparent', color: tab==='files'?'var(--ink)':'var(--ink-3)', fontWeight: tab==='files'?600:400}}
                     onClick={()=>setTab('files')}>
-              File caricati ({vatRegister.files.length})
+              File caricati ({fmtNum(vatRegister.files.length, 0)})
             </button>
             {vatRegister.summaryRows.length > 0 && (
               <button className={`px-4 py-2 text-sm border-b-2`}
                       style={{borderColor: tab==='summary'?'var(--accent)':'transparent', color: tab==='summary'?'var(--ink)':'var(--ink-3)', fontWeight: tab==='summary'?600:400}}
                       onClick={()=>setTab('summary')}>
-                Riassuntivo ({vatRegister.summaryRows.length})
+                Riassuntivo ({fmtNum(vatRegister.summaryRows.length, 0)})
               </button>
             )}
             {vatRegister.rows.length > 0 && (
               <button className={`px-4 py-2 text-sm border-b-2`}
                       style={{borderColor: tab==='detailed'?'var(--accent)':'transparent', color: tab==='detailed'?'var(--ink)':'var(--ink-3)', fontWeight: tab==='detailed'?600:400}}
                       onClick={()=>setTab('detailed')}>
-                Per documento ({vatRegister.rows.length})
+                Per documento ({fmtNum(vatRegister.rows.length, 0)})
               </button>
             )}
             <button className={`px-4 py-2 text-sm border-b-2`}
                     style={{borderColor: tab==='codes'?'var(--accent)':'transparent', color: tab==='codes'?'var(--ink)':'var(--ink-3)', fontWeight: tab==='codes'?600:400}}
                     onClick={()=>setTab('codes')}>
-              Mappa codici IVA ({Object.keys(vatRegister.codeMap).length})
-              {unmappedCodes.length > 0 && <span className="ml-2 badge b-warn">{unmappedCodes.length} mancanti</span>}
+              Mappa codici IVA ({fmtNum(Object.keys(vatRegister.codeMap).length, 0)})
+              {unmappedCodes.length > 0 && <span className="ml-2 badge b-warn">{fmtNum(unmappedCodes.length, 0)} mancanti</span>}
             </button>
           </div>
 
@@ -4392,11 +4392,11 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
                             <span className="badge b-info">Riassuntivo</span> :
                             <span className="badge b-mute">Per documento</span>}
                         </td>
-                        <td className="num text-right font-semibold">{f.rowCount}</td>
+                        <td className="num text-right font-semibold">{fmtNum(f.rowCount, 0)}</td>
                         <td className="text-xs">
                           {f.periods.length === 0 ? '—' :
                            f.periods.length <= 3 ? f.periods.map(formatPeriodo).join(', ') :
-                           `${formatPeriodo(f.periods[0])} … ${formatPeriodo(f.periods[f.periods.length-1])} (${f.periods.length} periodi)`}
+                           `${formatPeriodo(f.periods[0])} … ${formatPeriodo(f.periods[f.periods.length-1])} (${fmtNum(f.periods.length, 0)} periodi)`}
                         </td>
                         <td className="text-xs" style={{color:'var(--ink-3)'}}>{new Date(f.importedAt).toLocaleString('it-IT')}</td>
                         <td>
@@ -4426,14 +4426,14 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
                   <div className="col-span-3">
                     <label className="label block mb-1">Periodo</label>
                     <select className="input" value={periodFilter} onChange={e=>setPeriodFilter(e.target.value)}>
-                      <option value="">Tutti ({allPeriods.length})</option>
+                      <option value="">Tutti ({fmtNum(allPeriods.length, 0)})</option>
                       {allPeriods.map(p => <option key={p} value={p}>{formatPeriodo(p)}</option>)}
                     </select>
                   </div>
                   <div className="col-span-5">
                     <label className="label block mb-1">Sezionale</label>
                     <select className="input" value={sezioneFilter} onChange={e=>setSezioneFilter(e.target.value)}>
-                      <option value="">Tutti ({allSezioni.length})</option>
+                      <option value="">Tutti ({fmtNum(allSezioni.length, 0)})</option>
                       {allSezioni.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
@@ -4505,7 +4505,7 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
                 </table>
                 {filteredSummary.length > 1000 && (
                   <div className="p-3 text-xs text-center" style={{color:'var(--ink-3)', background:'var(--bg-deep)'}}>
-                    Mostrate prime 1000 di {filteredSummary.length} righe — esporta in Excel per vedere tutto
+                    Mostrate prime {fmtNum(1000, 0)} di {fmtNum(filteredSummary.length, 0)} righe — esporta in Excel per vedere tutto
                   </div>
                 )}
               </div>
@@ -4542,7 +4542,7 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
               </table>
               {vatRegister.rows.length > 500 && (
                 <div className="p-3 text-xs text-center" style={{color:'var(--ink-3)', background:'var(--bg-deep)'}}>
-                  Mostrate prime 500 di {vatRegister.rows.length} righe
+                  Mostrate prime {fmtNum(500, 0)} di {fmtNum(vatRegister.rows.length, 0)} righe
                 </div>
               )}
             </div>
@@ -4571,7 +4571,7 @@ const RegistriSection = ({ vatRegister, setVatRegister }) => {
               {unmappedCodes.length > 0 && (
                 <div className="card p-3 mb-4" style={{background:'rgba(181,134,46,0.08)', border:'1px solid var(--warn)'}}>
                   <div className="text-sm font-semibold mb-1" style={{color:'var(--warn)'}}>
-                    <Icon name="alert" size={14}/> {unmappedCodes.length} codici presenti nel registro ma non mappati
+                    <Icon name="alert" size={14}/> {fmtNum(unmappedCodes.length, 0)} codici presenti nel registro ma non mappati
                   </div>
                   <div className="text-xs flex gap-1 flex-wrap">
                     {unmappedCodes.map(c => (
@@ -5425,9 +5425,9 @@ const ControlliSection = ({ invoices, vatRegister, tolerance, setTolerance,
           </div>
           <div className="col-span-3 text-sm">
             <div className="label">Dataset</div>
-            <div>📄 <strong>{invoices.length}</strong> fatture XML</div>
-            {hasDetailed && <div>📋 <strong>{vatRegister.rows.length}</strong> righe registro per documento</div>}
-            {hasSummary && <div>📊 <strong>{vatRegister.summaryRows.length}</strong> righe registro riassuntivo</div>}
+            <div>📄 <strong>{fmtNum(invoices.length, 0)}</strong> fatture XML</div>
+            {hasDetailed && <div>📋 <strong>{fmtNum(vatRegister.rows.length, 0)}</strong> righe registro per documento</div>}
+            {hasSummary && <div>📊 <strong>{fmtNum(vatRegister.summaryRows.length, 0)}</strong> righe registro riassuntivo</div>}
             {hasSummary && !hasDetailed && (
               <div className="text-[11px] mt-1" style={{color:'var(--accent)'}}>
                 Modalità: <strong>confronto aggregato</strong> per periodo/aliquota/natura
@@ -5453,23 +5453,23 @@ const ControlliSection = ({ invoices, vatRegister, tolerance, setTolerance,
           <div className="grid grid-cols-6 gap-3 mb-4">
             <div className="kpi-card">
               <div className="label">Aggregati</div>
-              <div className="text-2xl font-serif">{summaryResult.summary.totalKeys}</div>
+              <div className="text-2xl font-serif">{fmtNum(summaryResult.summary.totalKeys, 0)}</div>
             </div>
             <div className="kpi-card ok">
               <div className="label">Coerenti</div>
-              <div className="text-2xl font-serif" style={{color:'var(--ok)'}}>{summaryResult.summary.ok}</div>
+              <div className="text-2xl font-serif" style={{color:'var(--ok)'}}>{fmtNum(summaryResult.summary.ok, 0)}</div>
             </div>
             <div className="kpi-card warn">
               <div className="label">Differenze</div>
-              <div className="text-2xl font-serif" style={{color:'var(--warn)'}}>{summaryResult.summary.diff}</div>
+              <div className="text-2xl font-serif" style={{color:'var(--warn)'}}>{fmtNum(summaryResult.summary.diff, 0)}</div>
             </div>
             <div className="kpi-card err">
               <div className="label">Solo XML</div>
-              <div className="text-2xl font-serif" style={{color:'var(--err)'}}>{summaryResult.summary.xmlOnly}</div>
+              <div className="text-2xl font-serif" style={{color:'var(--err)'}}>{fmtNum(summaryResult.summary.xmlOnly, 0)}</div>
             </div>
             <div className="kpi-card err">
               <div className="label">Solo registro</div>
-              <div className="text-2xl font-serif" style={{color:'var(--err)'}}>{summaryResult.summary.registerOnly}</div>
+              <div className="text-2xl font-serif" style={{color:'var(--err)'}}>{fmtNum(summaryResult.summary.registerOnly, 0)}</div>
             </div>
             <div className="kpi-card">
               <div className="label">Diff. tot. imponibile</div>
@@ -5535,31 +5535,31 @@ const ControlliSection = ({ invoices, vatRegister, tolerance, setTolerance,
             <button onClick={()=>setFilterStatus('all')}
                     className={`kpi-card text-left ${filterStatus==='all'?'':'opacity-70'}`}>
               <div className="label">Totale</div>
-              <div className="text-2xl font-serif">{counts.total}</div>
+              <div className="text-2xl font-serif">{fmtNum(counts.total, 0)}</div>
             </button>
             <button onClick={()=>setFilterStatus('ok')}
                     className={`kpi-card ok text-left ${filterStatus==='ok'?'':'opacity-70'}`}>
               <div className="label">Coerenti</div>
-              <div className="text-2xl font-serif" style={{color:'var(--ok)'}}>{counts.ok}</div>
+              <div className="text-2xl font-serif" style={{color:'var(--ok)'}}>{fmtNum(counts.ok, 0)}</div>
             </button>
             <button onClick={()=>setFilterStatus('warnings')}
                     className={`kpi-card warn text-left ${filterStatus==='warnings'?'':'opacity-70'}`}>
               <div className="label">Warning</div>
-              <div className="text-2xl font-serif" style={{color:'var(--warn)'}}>{counts.warning}</div>
+              <div className="text-2xl font-serif" style={{color:'var(--warn)'}}>{fmtNum(counts.warning, 0)}</div>
             </button>
             <button onClick={()=>setFilterStatus('errors')}
                     className={`kpi-card err text-left ${filterStatus==='errors'?'':'opacity-70'}`}>
               <div className="label">Errori</div>
-              <div className="text-2xl font-serif" style={{color:'var(--err)'}}>{counts.error}</div>
+              <div className="text-2xl font-serif" style={{color:'var(--err)'}}>{fmtNum(counts.error, 0)}</div>
             </button>
             <button onClick={()=>setFilterStatus('unmatched')}
                     className={`kpi-card text-left ${filterStatus==='unmatched'?'':'opacity-70'}`}>
               <div className="label">XML senza match</div>
-              <div className="text-2xl font-serif">{counts.xmlOnly}</div>
+              <div className="text-2xl font-serif">{fmtNum(counts.xmlOnly, 0)}</div>
             </button>
             <div className="kpi-card">
               <div className="label">Registro senza XML</div>
-              <div className="text-2xl font-serif">{counts.registerOnly}</div>
+              <div className="text-2xl font-serif">{fmtNum(counts.registerOnly, 0)}</div>
             </div>
           </div>
 
@@ -5605,7 +5605,7 @@ const ControlliSection = ({ invoices, vatRegister, tolerance, setTolerance,
                           {r.matchStatus==='xml-only' && <span className="badge b-warn">Solo XML</span>}
                           {r.matchStatus==='register-only' && <span className="badge b-warn">Solo Reg.</span>}
                         </td>
-                        <td className="num text-xs">{r.confidenceScore}</td>
+                        <td className="num text-xs">{fmtNum(r.confidenceScore, 0)}</td>
                         <td className="text-xs">
                           {inv ? <><span className="font-mono">{inv.numeroDocumento}</span> · {fmtDate(inv.dataDocumento)}</>
                                : <><span className="font-mono">{reg0?.documentNumber}</span> · {fmtDate(reg0?.documentDate)}</>}
@@ -5620,7 +5620,7 @@ const ControlliSection = ({ invoices, vatRegister, tolerance, setTolerance,
                           {diff != null ? fmtMoney(diff) : '—'}
                         </td>
                         <td className="text-xs">
-                          {anomalieCount > 0 ? <span className="badge b-warn">{anomalieCount}</span> : <span className="text-xs" style={{color:'var(--ink-3)'}}>—</span>}
+                          {anomalieCount > 0 ? <span className="badge b-warn">{fmtNum(anomalieCount, 0)}</span> : <span className="text-xs" style={{color:'var(--ink-3)'}}>—</span>}
                         </td>
                         <td>
                           {inv && (
@@ -5664,7 +5664,7 @@ const ReconDetail = ({ r, tolerance }) => (
 
     {r.articleChecks.length > 0 && (
       <div className="col-span-12">
-        <div className="label mb-2">Controllo articoli IVA ({r.articleChecks.length})</div>
+        <div className="label mb-2">Controllo articoli IVA ({fmtNum(r.articleChecks.length, 0)})</div>
         <div className="card overflow-x-auto">
           <table className="data-table">
             <thead><tr>
@@ -5694,7 +5694,7 @@ const ReconDetail = ({ r, tolerance }) => (
 
     {r.roundingChecks.length > 0 && (
       <div className="col-span-12">
-        <div className="label mb-2">Controllo arrotondamenti IVA ({r.roundingChecks.length})</div>
+        <div className="label mb-2">Controllo arrotondamenti IVA ({fmtNum(r.roundingChecks.length, 0)})</div>
         <div className="card overflow-x-auto">
           <table className="data-table">
             <thead><tr>
@@ -5739,7 +5739,7 @@ const ReconDetail = ({ r, tolerance }) => (
 
     {r.diffs.length > 0 && (
       <div className="col-span-12">
-        <div className="label mb-2">Altre differenze ({r.diffs.length})</div>
+        <div className="label mb-2">Altre differenze ({fmtNum(r.diffs.length, 0)})</div>
         <div className="card overflow-x-auto">
           <table className="data-table">
             <thead><tr>
@@ -5853,7 +5853,7 @@ const ErroriSection = ({ errorReport, setErrorReport }) => {
       <div className="col-span-12 flex items-end justify-between gap-4 flex-wrap">
         <div>
           <h2 className="serif text-3xl mb-1">Report errori</h2>
-          <p className="text-sm" style={{color:'var(--ink-3)'}}>{filtered.length} di {errorReport.length} segnalazioni · gestisci stato e note</p>
+          <p className="text-sm" style={{color:'var(--ink-3)'}}>{fmtNum(filtered.length, 0)} di {fmtNum(errorReport.length, 0)} segnalazioni · gestisci stato e note</p>
         </div>
         <div className="flex gap-2 items-center">
           <button className="btn" onClick={exportXlsx} disabled={!filtered.length}>
@@ -5865,31 +5865,31 @@ const ErroriSection = ({ errorReport, setErrorReport }) => {
       <div className="col-span-12 grid grid-cols-7 gap-2">
         <button onClick={()=>{setFilterSev('all'); setFilterStatus('all');}} className={`kpi-card text-left ${filterSev==='all'&&filterStatus==='all'?'ring-2':''}`} style={{ringColor:'var(--accent)'}}>
           <div className="label">Totali</div>
-          <div className="num text-2xl mt-1">{counts.total}</div>
+          <div className="num text-2xl mt-1">{fmtNum(counts.total, 0)}</div>
         </button>
         <button onClick={()=>setFilterSev('error')} className={`kpi-card text-left ${filterSev==='error'?'ring-2':''}`}>
           <div className="label" style={{color:'var(--err)'}}>Errori</div>
-          <div className="num text-2xl mt-1" style={{color:'var(--err)'}}>{counts.error}</div>
+          <div className="num text-2xl mt-1" style={{color:'var(--err)'}}>{fmtNum(counts.error, 0)}</div>
         </button>
         <button onClick={()=>setFilterSev('warning')} className={`kpi-card text-left ${filterSev==='warning'?'ring-2':''}`}>
           <div className="label" style={{color:'var(--warn)'}}>Warning</div>
-          <div className="num text-2xl mt-1" style={{color:'var(--warn)'}}>{counts.warning}</div>
+          <div className="num text-2xl mt-1" style={{color:'var(--warn)'}}>{fmtNum(counts.warning, 0)}</div>
         </button>
         <button onClick={()=>setFilterSev('review')} className={`kpi-card text-left ${filterSev==='review'?'ring-2':''}`}>
           <div className="label" style={{color:'var(--info)'}}>Da verificare</div>
-          <div className="num text-2xl mt-1" style={{color:'var(--info)'}}>{counts.review}</div>
+          <div className="num text-2xl mt-1" style={{color:'var(--info)'}}>{fmtNum(counts.review, 0)}</div>
         </button>
         <button onClick={()=>setFilterStatus('open')} className={`kpi-card text-left ${filterStatus==='open'?'ring-2':''}`}>
           <div className="label">Aperti</div>
-          <div className="num text-2xl mt-1">{counts.open}</div>
+          <div className="num text-2xl mt-1">{fmtNum(counts.open, 0)}</div>
         </button>
         <button onClick={()=>setFilterStatus('in-progress')} className={`kpi-card text-left ${filterStatus==='in-progress'?'ring-2':''}`}>
           <div className="label">In lavorazione</div>
-          <div className="num text-2xl mt-1">{counts.inProgress}</div>
+          <div className="num text-2xl mt-1">{fmtNum(counts.inProgress, 0)}</div>
         </button>
         <button onClick={()=>setFilterStatus('resolved')} className={`kpi-card text-left ${filterStatus==='resolved'?'ring-2':''}`}>
           <div className="label" style={{color:'var(--ok)'}}>Risolti</div>
-          <div className="num text-2xl mt-1" style={{color:'var(--ok)'}}>{counts.resolved}</div>
+          <div className="num text-2xl mt-1" style={{color:'var(--ok)'}}>{fmtNum(counts.resolved, 0)}</div>
         </button>
       </div>
 
@@ -6298,7 +6298,7 @@ const PdfSection = ({ invoices, target, setTarget }) => {
           <button className="btn" onClick={()=>navigate(-1)} disabled={invoices.length<2}>
             <Icon name="chev-right" size={14} style={{transform:'rotate(180deg)'}}/> Precedente
           </button>
-          <span className="text-sm font-mono" style={{color:'var(--ink-3)'}}>{idx+1} / {invoices.length}</span>
+          <span className="text-sm font-mono" style={{color:'var(--ink-3)'}}>{fmtNum(idx+1, 0)} / {fmtNum(invoices.length, 0)}</span>
           <button className="btn" onClick={()=>navigate(1)} disabled={invoices.length<2}>
             Successivo <Icon name="chev-right" size={14}/>
           </button>
@@ -6315,7 +6315,7 @@ const PdfSection = ({ invoices, target, setTarget }) => {
         <div className="col-span-12 card p-4">
           <div className="flex justify-between mb-2 text-xs">
             <span>Generazione PDF in corso… {bulkProgress.current}</span>
-            <span className="num">{bulkProgress.done} / {bulkProgress.total}</span>
+            <span className="num">{fmtNum(bulkProgress.done, 0)} / {fmtNum(bulkProgress.total, 0)}</span>
           </div>
           <div className="h-2 rounded-full overflow-hidden" style={{background:'var(--bg-3)'}}>
             <div className="h-full" style={{
@@ -6363,7 +6363,7 @@ const PdfSection = ({ invoices, target, setTarget }) => {
             <div className="text-xs font-mono break-all" style={{color:'var(--ink-3)'}}>{current.sourceFileName}</div>
             {current.allegati && current.allegati.length > 0 && (
               <div className="mt-2">
-                <div className="label mb-1">Allegati ({current.allegati.length})</div>
+                <div className="label mb-1">Allegati ({fmtNum(current.allegati.length, 0)})</div>
                 {current.allegati.map((a,i) => (
                   <div key={i} className="text-xs" style={{color:'var(--ink-3)'}}>
                     · {a.nomeAttachment || '(senza nome)'} <span className="badge b-mute">{a.formato || '?'}</span>
