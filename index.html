@@ -853,8 +853,24 @@ const deepText = (el, path) => {
 
 const parseFatturaXml = (xmlString, fileName) => {
   const parser = new DOMParser();
-  const doc = parser.parseFromString(xmlString, 'application/xml');
-  const perr = doc.querySelector('parsererror');
+  let doc = parser.parseFromString(xmlString, 'application/xml');
+  let perr = doc.querySelector('parsererror');
+  if (perr) {
+    // Lenient retry: some Italian gestionali emit XML with namespace prefix on the
+    // opening tag (<ns2:Comune>) but not on the closing tag (</Comune>) — or vice
+    // versa. DOMParser refuses; MIGGsrl / MSXML accept. Strip every "ns:" prefix
+    // from element tags and remove xmlns declarations, then re-parse.
+    const stripped = xmlString
+      .replace(/<(\/?)([A-Za-z][\w-]*):/g, '<$1')
+      .replace(/\s+xmlns(?::[A-Za-z][\w-]*)?\s*=\s*"[^"]*"/g, '')
+      .replace(/\s+xmlns(?::[A-Za-z][\w-]*)?\s*=\s*'[^']*'/g, '');
+    const retryDoc = parser.parseFromString(stripped, 'application/xml');
+    const retryErr = retryDoc.querySelector('parsererror');
+    if (!retryErr) {
+      doc = retryDoc;
+      perr = null;
+    }
+  }
   if (perr) {
     const errText = (perr.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
     const head = (xmlString || '').slice(0, 80).replace(/[\x00-\x1F]/g, '·').replace(/\s+/g, ' ');
@@ -1078,6 +1094,43 @@ const readFileAsArrayBuffer = (file) => new Promise((res, rej) => {
   r.readAsArrayBuffer(file);
 });
 
+/* Encoding-aware XML reader — respects BOM and the encoding declared in <?xml ... ?>.
+   Italian fiscal software (and old gestionali) often emit FatturaPA in iso-8859-1 or
+   windows-1252; reading those as UTF-8 corrupts accented characters and the parser
+   fails downstream. */
+const readXmlFile = async (file) => {
+  const buf = await readFileAsArrayBuffer(file);
+  return decodeXmlBytes(new Uint8Array(buf));
+};
+const decodeXmlBytes = (view) => {
+  // BOM detection
+  if (view.length >= 3 && view[0] === 0xEF && view[1] === 0xBB && view[2] === 0xBF) {
+    return new TextDecoder('utf-8', { fatal: false }).decode(view.slice(3));
+  }
+  if (view.length >= 2 && view[0] === 0xFF && view[1] === 0xFE) {
+    return new TextDecoder('utf-16le', { fatal: false }).decode(view.slice(2));
+  }
+  if (view.length >= 2 && view[0] === 0xFE && view[1] === 0xFF) {
+    return new TextDecoder('utf-16be', { fatal: false }).decode(view.slice(2));
+  }
+  // Peek at the XML declaration (latin1 keeps byte offsets and ASCII tokens readable)
+  const head = new TextDecoder('latin1', { fatal: false }).decode(view.slice(0, Math.min(200, view.length)));
+  const m = head.match(/<\?xml[^>]*\bencoding\s*=\s*["']([\w.:-]+)["']/i);
+  let enc = 'utf-8';
+  if (m) {
+    const declared = m[1].toLowerCase();
+    if (declared === 'utf-8' || declared === 'utf8') enc = 'utf-8';
+    else if (/^iso-?8859-?1$|^latin-?1$/.test(declared)) enc = 'iso-8859-1';
+    else if (/^windows-?1252$|^cp-?1252$/.test(declared)) enc = 'windows-1252';
+    else enc = declared;
+  }
+  try {
+    return new TextDecoder(enc, { fatal: false }).decode(view);
+  } catch {
+    return new TextDecoder('utf-8', { fatal: false }).decode(view);
+  }
+};
+
 /* Companion files emitted by SDI alongside the invoice — they describe the exchange
    (sender, recipient, hash) and must NOT be parsed as invoices.
    Patterns observed: IT12345_AAAAA_metadato.xml, metadato_IT12345_AAAAA.xml */
@@ -1276,7 +1329,10 @@ const extractXmlFromP7mBuffer = (arrayBuffer) => {
     } catch {}
   }
 
-  throw new Error('Nessun XML FatturaPA trovato nell\'envelope p7m (firma scollegata, BER indefinito o formato non supportato)');
+  // Build a diagnostic message so the user can tell us what kind of envelope this is
+  const ranges = _collectAsn1OctetStrings(view);
+  const head = Array.from(view.slice(0, 16)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+  throw new Error(`Nessun XML FatturaPA trovato nell'envelope p7m (firma scollegata, BER indefinito o formato non supportato) — size: ${view.length}b, OCTET STRINGs trovate: ${ranges.length}, primi byte: ${head}`);
 };
 
 const processFiles = async (fileList, onProgress) => {
@@ -1306,8 +1362,9 @@ const processFiles = async (fileList, onProgress) => {
             const buf = await entry.async('arraybuffer');
             xmlFiles.push({ name: baseName, buffer: buf, kind: 'p7m' });
           } else if (en.endsWith('.xml')) {
-            const txt = await entry.async('string');
-            xmlFiles.push({ name: baseName, text: txt, kind: 'xml' });
+            // Read as bytes so we can respect the declared encoding (iso-8859-1, etc.)
+            const ab = await entry.async('arraybuffer');
+            xmlFiles.push({ name: baseName, text: decodeXmlBytes(new Uint8Array(ab)), kind: 'xml' });
           }
         }
       } catch (e) {
@@ -1327,8 +1384,9 @@ const processFiles = async (fileList, onProgress) => {
         const buf = xf.buffer || await readFileAsArrayBuffer(xf.file);
         xmlText = extractXmlFromP7mBuffer(buf);
       } else {
-        const txt = xf.text || await readFileAsText(xf.file);
-        // strip BOM if present
+        // Encoding-aware read: respect BOM and the declared <?xml ... encoding="..."?>.
+        // FatturaPA from older Italian gestionali is often iso-8859-1 / windows-1252.
+        const txt = xf.text != null ? xf.text : await readXmlFile(xf.file);
         const clean = txt.replace(/^\uFEFF/, '');
         const i1 = clean.indexOf('<');
         const i2 = clean.lastIndexOf('>');
