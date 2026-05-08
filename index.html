@@ -854,13 +854,17 @@ const deepText = (el, path) => {
 const parseFatturaXml = (xmlString, fileName) => {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlString, 'application/xml');
-  if (doc.querySelector('parsererror')) {
-    throw new Error('XML non valido');
+  const perr = doc.querySelector('parsererror');
+  if (perr) {
+    const errText = (perr.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const head = (xmlString || '').slice(0, 80).replace(/[\x00-\x1F]/g, '·').replace(/\s+/g, ' ');
+    const tail = (xmlString || '').slice(-60).replace(/[\x00-\x1F]/g, '·').replace(/\s+/g, ' ');
+    throw new Error(`XML non valido — ${errText} | inizio: "${head}" | fine: "${tail}" | size: ${(xmlString || '').length}b`);
   }
   const root = doc.documentElement;
   const rootTag = stripNS(root.tagName);
   if (rootTag !== 'FatturaElettronica' && rootTag !== 'FatturaElettronicaSemplificata') {
-    throw new Error('Non è un file FatturaPA');
+    throw new Error(`Non è un file FatturaPA (root tag: ${rootTag})`);
   }
   const isSemplificata = rootTag === 'FatturaElettronicaSemplificata';
 
@@ -1119,12 +1123,41 @@ const _collectAsn1OctetStrings = (view) => {
     if (p >= view.length) return null;
     const lb = view[p];
     if (lb < 0x80) return { len: lb, lenBytes: 1 };
-    if (lb === 0x80) return { len: -1, lenBytes: 1 }; // indefinite — punt
+    if (lb === 0x80) return { len: -1, lenBytes: 1 }; // indefinite (BER)
     const n = lb & 0x7f;
     if (n > 4 || p + n >= view.length) return null;
     let v = 0;
     for (let i = 0; i < n; i++) v = (v << 8) | view[p + 1 + i];
     return { len: v, lenBytes: 1 + n };
+  };
+  // Find the position of the EOC marker (00 00) that closes an indefinite-length
+  // element starting at content position `cs`. Skips over nested TLVs at the same
+  // depth, including nested indefinite-length ones (recursion). Returns -1 on
+  // truncation or malformed input.
+  const findIndefiniteEnd = (cs, hardEnd) => {
+    let p = cs;
+    while (p < hardEnd - 1) {
+      if (view[p] === 0x00 && view[p + 1] === 0x00) return p; // EOC at this depth
+      if (p >= view.length) return -1;
+      // Skip over a TLV
+      p++; // tag consumed
+      if (p >= view.length) return -1;
+      const lb = view[p];
+      if (lb < 0x80) {
+        p += 1 + lb;          // short form
+      } else if (lb === 0x80) {
+        const inner = findIndefiniteEnd(p + 1, hardEnd);
+        if (inner < 0) return -1;
+        p = inner + 2;        // skip inner content + its EOC
+      } else {
+        const n = lb & 0x7f;
+        if (n > 4 || p + n >= view.length) return -1;
+        let len = 0;
+        for (let i = 0; i < n; i++) len = (len << 8) | view[p + 1 + i];
+        p += 1 + n + len;     // long form
+      }
+    }
+    return -1;
   };
   const walk = (start, end, depth) => {
     if (depth > 30) return;
@@ -1132,20 +1165,30 @@ const _collectAsn1OctetStrings = (view) => {
     while (p < end) {
       const tag = view[p];
       if (tag === undefined) return;
-      // End-of-content marker (00 00) used by indefinite-length BER encodings — stop.
+      // End-of-content marker (00 00) — boundary of indefinite-length element above.
       if (tag === 0x00 && view[p + 1] === 0x00) return;
       const li = readLen(p + 1);
       if (!li) return;
-      if (li.len < 0) return; // indefinite length: bail this branch
-      const cs = p + 1 + li.lenBytes;
-      const ce = cs + li.len;
-      if (ce > end) return;
+      let cs = p + 1 + li.lenBytes;
+      let ce;
+      let advanceTo;
+      if (li.len < 0) {
+        // Indefinite-length BER: scan for EOC at this depth
+        const eoc = findIndefiniteEnd(cs, end);
+        if (eoc < 0) return;
+        ce = eoc;
+        advanceTo = eoc + 2; // skip past EOC
+      } else {
+        ce = cs + li.len;
+        if (ce > end) return;
+        advanceTo = ce;
+      }
       if (tag === 0x04) {
         out.push({ start: cs, end: ce });
       }
-      // Constructed (high-bit-of-low-tag-bits 0x20 set) OR context-specific [n] EXPLICIT — recurse.
+      // Constructed (low-tag-bit 0x20 set, includes context-specific [n] EXPLICIT) — recurse.
       if ((tag & 0x20) !== 0) walk(cs, ce, depth + 1);
-      p = ce;
+      p = advanceTo;
     }
   };
   walk(0, view.length, 0);
