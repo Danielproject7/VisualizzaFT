@@ -24,4 +24,39 @@ Apri `index.html` direttamente in un browser moderno (Chrome, Edge, Firefox). I 
 
 ## Privacy
 
-Tutti i dati restano nel browser dell'utente. Le impostazioni di personalizzazione (font, colori, colonne, larghezze, ecc.) sono salvate in `localStorage`. Nessun file viene caricato verso server esterni.
+Tutti i dati restano nel browser dell'utente. Le impostazioni di personalizzazione (font, colori, colonne, larghezze, ecc.) sono salvate in `localStorage`; le fatture, la lista AdE e il registro IVA importati sono salvati in `IndexedDB` e ricaricati alla prossima apertura. Nessun file viene caricato verso server esterni.
+
+## Workflow di sviluppo
+
+Il deploy su Vercel (https://visualizza-ft.vercel.app/) avviene **solo** dai push su `main`. Lo sviluppo quotidiano si fa sul branch `dev`, dove ogni push produce automaticamente un deploy preview a un URL separato:
+
+```
+dev   ──○──○──○──○──○──○──   push qui → preview URL su Vercel (non tocca la produzione)
+                       \
+main  ──────────────────●──   merge qui → deploy in produzione
+```
+
+### Sviluppo (modificare e testare)
+
+```bash
+git checkout dev           # se non ci sei già
+# ...modifiche a index.html...
+git add index.html
+git commit -m "messaggio"
+git push                   # va su dev, Vercel fa un preview
+```
+
+L'URL del preview compare nella dashboard Vercel (Deployments) o nei commenti dei push su GitHub.
+
+### Pubblicare in produzione
+
+Quando il preview è OK e vuoi promuoverlo:
+
+```bash
+git checkout main
+git merge dev
+git push                   # questo deploya su https://visualizza-ft.vercel.app/
+git checkout dev           # torna allo sviluppo
+```
+
+In alternativa: vai su Vercel → Deployments → trova il deploy del commit corretto → "Promote to Production".
