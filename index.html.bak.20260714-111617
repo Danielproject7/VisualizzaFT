@@ -337,18 +337,6 @@
   }, 8000);
 </script>
 
-<script>
-  // Registra un preset React con runtime CLASSIC (senza import automatici).
-  // Necessario perche babel-standalone di default emette
-  // `import { jsx } from "react/jsx-runtime"` â€” non eseguibile senza type="module".
-  (function registerClassicPreset() {
-    if (typeof Babel === 'undefined') { setTimeout(registerClassicPreset, 30); return; }
-    if (Babel.availablePresets && Babel.availablePresets['react-classic']) return;
-    Babel.registerPreset('react-classic', {
-      presets: [ [Babel.availablePresets['react'], { runtime: 'classic' }] ]
-    });
-  })();
-</script>
 <script type="text/babel" data-presets="react-classic">
 const { useState, useEffect, useMemo, useRef, useCallback, Fragment } = React;
 
